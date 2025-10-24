@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//f/yrh/stm32/参考资料/FOC_X/**)",
+      "Bash(dir:*)",
+      "Read(//f/yrh/stm32/参考资料/Nebula_st_mdk/FOC/**)",
+      "Bash(find:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

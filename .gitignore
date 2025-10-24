@@ -1,0 +1,64 @@
+# Keil MDK-ARM
+*.uvguix.*
+*.uvoptx
+*.bak
+*.ddk
+*.edk
+*.lst
+*.lnp
+*.mpf
+*.mpj
+*.omf
+*.plg
+*.prevddk
+*.rpt
+*.scvd
+*.__i
+*.__i~
+*.crf
+*.o
+*.d
+*.axf
+*.tra
+*.dep
+*.iex
+*.HTM
+*.build_log.htm
+*.sct
+*.map
+
+# Build directories
+Objects/
+Listings/
+DebugConfig/
+RTE/
+
+# User-specific files
+*.uvguix
+*.uvopt
+
+# JLink files
+JLinkLog.txt
+JLinkSettings.ini
+
+# Backup files
+*~
+*.orig
+*.bak
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Windows reserved names
+nul
+con
+prn
+aux
+com[0-9]
+lpt[0-9]
