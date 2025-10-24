@@ -66,6 +66,11 @@ void foc_start_pwm( AuroFOC *foc ){
     // DRV8353不需要互补PWM输出，低侧由PWM_COTR统一控制
     // HAL_TIMEx_PWMN_Start已删除
 
+    // ===== 关键修复：手动使能TIM1主输出 (MOE位) =====
+    // TIM1是高级定时器，必须设置MOE=1才能输出PWM
+    // 原6-PWM代码中HAL_TIMEx_PWMN_Start()会自动设置MOE，但现在需要手动设置
+    __HAL_TIM_MOE_ENABLE(foc->htim);
+
     __HAL_TIM_SET_COMPARE( foc->htim , TIM_CHANNEL_1 , 0 );
     __HAL_TIM_SET_COMPARE( foc->htim , TIM_CHANNEL_2 , 0 );
     __HAL_TIM_SET_COMPARE( foc->htim , TIM_CHANNEL_3 , 0 );
@@ -104,13 +109,49 @@ void _foc_selftest_loop( AuroFOC *foc ){
 
 //开环
 uint32_t open_loop_cycle_cnt = 0;
+static float open_loop_shaft_angle = 0.0f;      // 开环机械轴角度(度) [0-360]
+static float open_loop_velocity = 600.0f;       // 开环目标速度(度/秒), 100RPM
+
 void _foc_open_loop( AuroFOC *foc ){
+	// ===== 开环模式：使用编码器角度 + Uq/Ud强制给定 =====
+	// 这种模式适合：
+	// 1. 验证编码器是否正常工作
+	// 2. 测试FOC算法（Clarke/Park/SVPWM）
+	// 3. 验证电机参数（极对数、机械偏差）
+	// 4. 调试Uq/Ud响应特性
+	//
+	// 工作原理：
+	// - 从编码器读取实际角度（闭环角度反馈）
+	// - 直接给定Uq/Ud电压（开环电压控制）
+	// - 电机会产生固定转矩，转速由负载决定
+
+	// 1. 读取编码器角度（包含极对数转换和机械偏差补偿）
 	_foc_get_angle( foc );
+
+	// 2. 计算电角度的sin/cos
 	_foc_cal_sincos( foc );
+
+	// 3. Clarke变换（三相电流 -> 两相静止坐标系）
     _foc_clark( foc );
+
+    // 4. Park变换（静止坐标系 -> 旋转坐标系，得到Id/Iq）
     _foc_park( foc );
-    _foc_ipark( foc ); 
-    _foc_svpwm( foc );	
+
+	// ===== 5. 强制给定Uq/Ud（开环电压控制的核心）=====
+	// Uq/Ud已经在MotorEvent.c初始化时设置：
+	// - motorA.Uq = 0.8V（产生转矩）
+	// - motorA.Ud = 0.0V（不需要励磁）
+	// 运行中可以通过修改 foc->Uq 来调整转矩大小
+	//
+	// 注意：这里不需要写代码，直接使用结构体中的Uq/Ud值
+
+	// 6. 逆Park变换（dq -> αβ）
+    _foc_ipark( foc );
+
+    // 7. SVPWM调制（αβ -> 三相PWM占空比）
+    _foc_svpwm( foc );
+
+	// ===== 8. 齿槽转矩补偿（可选功能）=====
 	if( compensate_flag == DISABLE )
 		_foc_cogging_torque_compensate( foc , foc->e_angle , 0 );
 	if( open_loop_cycle_cnt == 50000 ){
@@ -124,8 +165,8 @@ void _foc_open_loop( AuroFOC *foc ){
 	else{
 		open_loop_cycle_cnt += 1;
 	}
-		
-		
+
+
 }
 //电流环
 void _foc_i_loop( AuroFOC *foc ){
@@ -334,7 +375,7 @@ void _foc_get_angle( AuroFOC *foc ){
 }
 void _foc_cal_sincos( AuroFOC *foc ){
 	float e_angle; //电角度
-	e_angle = foc->as5047p.angle * foc->Pole_Pair;
+	e_angle = foc->as5047p.angle * ((float)foc->Pole_Pair);  // 强制类型转换
 	while( e_angle > 360.f )
 		e_angle -= 360.f;
 	foc->e_angle = e_angle;
@@ -495,7 +536,15 @@ void _foc_svpwm( AuroFOC *foc ){
     };
     _foc_update_pwm( foc , Ta , Tb , Tc );
 }
-void _foc_update_pwm( AuroFOC *foc , float tu , float tv , float tw ){
+void _foc_update_pwm( AuroFOC *foc , float ta , float tb , float tc ){
+	// ===== 关键修复：SVPWM输出的Ta/Tb/Tc是时间值，需要转换为占空比 =====
+	// 参考F103项目 foc.c:461-468
+	// 占空比 = 时间 / 周期
+	float tu = ta / foc->Ts;
+	float tv = tb / foc->Ts;
+	float tw = tc / foc->Ts;
+
+	// 限制占空比到 [0, 0.8]
 	tu = (tu > 0.8f) ? 0.8f : (tu < 0.0f) ? 0.0f : tu;
     tv = (tv > 0.8f) ? 0.8f : (tv < 0.0f) ? 0.0f : tv;
     tw = (tw > 0.8f) ? 0.8f : (tw < 0.0f) ? 0.0f : tw;

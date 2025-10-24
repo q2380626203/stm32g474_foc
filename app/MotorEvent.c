@@ -38,21 +38,32 @@ void MotorEvent_Start(void){
 	AS5047P_bsp_init(&motorA.as5047p);
 
 	// ===== 4. 电压和SVPWM参数 =====
-	motorA.Uq = 0.8;    // 初始q轴电压(降低以减少发热)
+	motorA.Uq = 0.0;    // 初始q轴电压(降低以减少发热)
 	motorA.Ud = 0.0;    // d轴电压为0
-	motorA.Ts = 2125;   // STM32G474 TIM1_ARR值(中心对齐模式)
-	motorA.Udc = 12.0;  // 母线电压12V
+
+	// ⚠️ 关键修复：Ts是时间周期，不是ARR值
+	// TIM1配置：ARR=2125, RepetitionCounter=1, 中心对齐模式
+	// TIM1时钟 = 170MHz
+	// PWM频率 = 170MHz / (2125+1) / 2 / (1+1) = 20kHz
+	// FOC中断频率 = 10kHz (因为RepetitionCounter=1)
+	// FOC控制周期 Ts = 1/10000 = 0.0001秒
+	motorA.Ts = 0.0001f;  // FOC控制周期 100μs
+
+	motorA.Udc = 24.0;  // 母线电压12V
+
+	// SVPWM系数: K = √3 × Ts / Udc
+	// K = 1.732 × 0.0001 / 12 ≈ 0.0000144
 	motorA.K = SQRT_3 * motorA.Ts / motorA.Udc;
 
 	// ===== 5. 限制参数 =====
-	motorA.limit.max_uq = 6;
-	motorA.limit.max_ud = 6;
+	motorA.limit.max_uq = 12;
+	motorA.limit.max_ud = 12;
 	motorA.limit.max_iq = 10;   // 最大电流10A (INA240A + 0.5mΩ)
 	motorA.limit.max_id = 10;
 	motorA.limit.max_speed = 500;  // 最大速度500 rad/s
 	motorA.limit.max_position = 5000;
-	motorA.limit.min_uq = -6;
-	motorA.limit.min_ud = -6;
+	motorA.limit.min_uq = -12;
+	motorA.limit.min_ud = -12;
 	motorA.limit.min_iq = -10;
 	motorA.limit.min_id = -10;
 	motorA.limit.min_speed = -500;
@@ -64,7 +75,7 @@ void MotorEvent_Start(void){
 	motorA.mechanical_offset = 0.0;    // 默认机械零偏(需校准)
 
 	// ===== 7. 控制模式和目标值 =====
-	motorA.focmode = stop_loop_mode;   // 初始停止模式
+	motorA.focmode = open_loop_mode;   // ⚠️ 关键修复：启动开环模式测试
 	motorA.aim.aim_iq = 0;
 	motorA.aim.aim_id = 0;
 	motorA.aim.aim_speed = 0;
